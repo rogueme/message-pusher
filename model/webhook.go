@@ -6,10 +6,12 @@ import (
 
 // WebhookConstructRule Keep compatible with Message
 type WebhookConstructRule struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Content     string `json:"content"`
-	URL         string `json:"url"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Content     string    `json:"content"`
+	URL         string    `json:"url"`
+	Btntxt      string    `json:"btntxt"`       // 新增按钮文本字段
+	Articles    []Article `json:"articles"`     // 新增文章列表字段
 }
 
 type Webhook struct {
