@@ -257,6 +257,8 @@ func TriggerWebhook(c *gin.Context) {
 		Description: constructRule.Description,
 		Content:     constructRule.Content,
 		URL:         constructRule.URL,
+		Btntxt:      constructRule.Btntxt,  // 即使为空也显式赋值
+		Articles:    constructRule.Articles, // 确保切片始终非nil
 	}
 	processMessage(c, message, user, false)
 }
