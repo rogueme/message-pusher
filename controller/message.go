@@ -204,63 +204,69 @@ func processMessage(c *gin.Context, message *model.Message, user *model.User, ne
 	})
 }
 
-func saveAndSendMessage(user *model.User, message *model.Message, channel_ *model.Channel) error {
-	if channel_.Status != common.ChannelStatusEnabled {
-		return errors.New("该渠道已被禁用")
-	}
-	common.MessageCount += 1 // We don't need to use atomic here because it's not a critical value
-	message.Link = common.GetUUID()
-	if message.URL == "" {
-		message.URL = fmt.Sprintf("%s/message/%s", common.ServerAddress, message.Link)
-	}
-	success := false
-	if common.MessagePersistenceEnabled || user.SaveMessageToDatabase == common.SaveMessageToDatabaseAllowed {
-		defer func() {
-			// Update the status of the message
-			status := common.MessageSendStatusFailed
-			if message.Async {
-				status = common.MessageSendStatusAsyncPending
-			} else {
-				if success {
-					status = common.MessageSendStatusSent
-				}
-			}
-			err := message.UpdateStatus(status)
-			if err != nil {
-				common.SysError("failed to update the status of the message: " + err.Error())
-			}
-			if message.Async {
-				channel.AsyncMessageQueue <- message.Id
-			}
-		}()
-		err := message.UpdateAndInsert(user.Id)
-		if err != nil {
-			common.SysError("保存消息失败: " + err.Error()) 
-			return err 
-		} 
-		// 原代码可能直接调用，没有错误处理，这里添加错误处理
-		go func() { 
-			if err := syncMessageToUser(message, user.Id); err != nil { 
-				common.SysError("同步消息到用户失败: " + err.Error()) 
-			} 
-		}() 
-	} else {
-		if message.Async {
-			return errors.New("异步发送消息需要用户具备消息持久化的权限")
-		}
-		message.Link = "unsaved" // This is for user to identify whether the message is saved
-		go syncMessageToUser(message, user.Id)
-	}
-	if !message.Async {
-		err := channel.SendMessage(message, user, channel_)
-		if err != nil {
-			common.SysError("发送消息失败: " + err.Error()) // 添加错误日志 
-			return err 
-		} 
-	}
-	success = true
-	return nil // After this line, the message status will be updated
-}
+// saveAndSendMessage 保存消息并发送消息，根据配置决定是否持久化消息，同时处理消息同步和发送逻辑
+func saveAndSendMessage(user *model.User, message *model.Message, channel_ *model.Channel) error { 
+    if channel_.Status != common.ChannelStatusEnabled { 
+        return errors.New("该渠道已被禁用") 
+    } 
+    common.MessageCount += 1 // We don't need to use atomic here because it's not a critical value 
+    message.Link = common.GetUUID() 
+    if message.URL == "" { 
+        message.URL = fmt.Sprintf("%s/message/%s", common.ServerAddress, message.Link) 
+    } 
+    success := false 
+    if common.MessagePersistenceEnabled || user.SaveMessageToDatabase == common.SaveMessageToDatabaseAllowed { 
+        defer func() { 
+            // Update the status of the message 
+            status := common.MessageSendStatusFailed 
+            if message.Async { 
+                status = common.MessageSendStatusAsyncPending 
+            } else { 
+                if success { 
+                    status = common.MessageSendStatusSent 
+                } 
+            } 
+            err := message.UpdateStatus(status) 
+            if err != nil { 
+                common.SysError("failed to update the status of the message: " + err.Error()) 
+            } 
+            if message.Async { 
+                channel.AsyncMessageQueue <- message.Id 
+            } 
+        }() 
+        err := message.UpdateAndInsert(user.Id) 
+        if err != nil { 
+            common.SysError("保存消息失败: " + err.Error()) 
+            return err 
+        } 
+        // 异步执行消息同步操作，并添加错误处理 
+        go func() { 
+            if err := syncMessageToUser(message, user.Id); err != nil { 
+                common.SysError("同步消息到用户失败: " + err.Error()) 
+            } 
+        }() 
+    } else { 
+        if message.Async { 
+            return errors.New("异步发送消息需要用户具备消息持久化的权限") 
+        } 
+        message.Link = "unsaved" // This is for user to identify whether the message is saved 
+        // 修正：使用匿名函数包裹调用并添加错误处理 
+        go func() { 
+            if err := syncMessageToUser(message, user.Id); err != nil { 
+                common.SysError("同步消息到用户失败: " + err.Error()) 
+            } 
+        }() 
+    } 
+    if !message.Async { 
+        err := channel.SendMessage(message, user, channel_) 
+        if err != nil { 
+            common.SysError("发送消息失败: " + err.Error()) // 添加错误日志 
+            return err 
+        } 
+    } 
+    success = true 
+    return nil // After this line, the message status will be updated 
+} 
 
 func GetStaticFile(c *gin.Context) {
 	path := c.Param("file")
