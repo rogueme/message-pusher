@@ -235,12 +235,13 @@ func saveAndSendMessage(user *model.User, message *model.Message, channel_ *mode
 		}()
 		err := message.UpdateAndInsert(user.Id)
 		if err != nil {
-			common.SysError("保存消息失败: " + err.Error()) // 添加错误日志 
+			common.SysError("保存消息失败: " + err.Error()) 
 			return err 
 		} 
+		// 原代码可能直接调用，没有错误处理，这里添加错误处理
 		go func() { 
 			if err := syncMessageToUser(message, user.Id); err != nil { 
-				common.SysError("同步消息到用户失败: " + err.Error()) // 添加错误日志 
+				common.SysError("同步消息到用户失败: " + err.Error()) 
 			} 
 		}() 
 	} else {
