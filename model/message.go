@@ -1,4 +1,4 @@
-package channel
+package model
 
 import (
 	"bytes"
