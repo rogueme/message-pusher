@@ -27,54 +27,72 @@ func keepCompatible(message *model.Message) {
 	}
 }
 
-func GetPushMessage(c *gin.Context) {
-	message := model.Message{
-		Title:       c.Query("title"),
-		Description: c.Query("description"),
-		Content:     c.Query("content"),
-		URL:         c.Query("url"),
-		Channel:     c.Query("channel"),
-		Token:       c.Query("token"),
-		To:          c.Query("to"),
-		Desp:        c.Query("desp"),
-		Short:       c.Query("short"),
-		OpenId:      c.Query("openid"),
-		Async:       c.Query("async") == "true",
-		RenderMode:  c.Query("render_mode"),
-	}
-	keepCompatible(&message)
-	pushMessageHelper(c, &message)
-}
+// parseArticles 解析文章列表 JSON 字符串
+func parseArticles(articlesStr string) []model.Article { 
+    var articles []model.Article 
+    if articlesStr != "" { 
+        err := json.Unmarshal([]byte(articlesStr), &articles) 
+        if err != nil { 
+            common.SysError("解析 Articles 字段失败: " + err.Error()) 
+        } 
+    } 
+    return articles 
+} 
 
-func PostPushMessage(c *gin.Context) {
-	var message model.Message
-	if strings.Contains(strings.ToLower(c.Request.Header.Get("Content-Type")), "application/json") {
-		// Looks like the user is using JSON
-		message = model.Message{}
-		err := json.NewDecoder(c.Request.Body).Decode(&message)
-		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法解析请求体，请检查其是否为合法 JSON",
-			})
-			return
-		}
-	} else {
-		message = model.Message{
-			Title:       c.PostForm("title"),
-			Description: c.PostForm("description"),
-			Content:     c.PostForm("content"),
-			URL:         c.PostForm("url"),
-			Channel:     c.PostForm("channel"),
-			Token:       c.PostForm("token"),
-			To:          c.PostForm("to"),
-			Desp:        c.PostForm("desp"),
-			Short:       c.PostForm("short"),
-			OpenId:      c.PostForm("openid"),
-			Async:       c.PostForm("async") == "true",
-			RenderMode:  c.PostForm("render_mode"),
-		}
-	}
+// GetPushMessage 处理 GET 请求，从查询参数中获取消息信息并推送消息
+func GetPushMessage(c *gin.Context) { 
+    message := model.Message{ 
+        Title:       c.Query("title"),
+        Description: c.Query("description"),
+        Content:     c.Query("content"),
+        URL:         c.Query("url"),
+        Btntxt:      c.Query("btntxt"),
+        Channel:     c.Query("channel"),
+        Token:       c.Query("token"),
+        To:          c.Query("to"),
+        Desp:        c.Query("desp"),
+        Short:       c.Query("short"),
+        OpenId:      c.Query("openid"),
+        Async:       c.Query("async") == "true",
+        RenderMode:  c.Query("render_mode"),
+        Articles:    parseArticles(c.Query("articles")), 
+    } 
+    keepCompatible(&message) 
+    pushMessageHelper(c, &message) 
+} 
+
+// PostPushMessage 处理 POST 请求，从表单或 JSON 中获取消息信息并推送消息
+func PostPushMessage(c *gin.Context) { 
+    var message model.Message 
+    if strings.Contains(strings.ToLower(c.Request.Header.Get("Content-Type")), "application/json") { 
+        // 用户使用 JSON 格式请求 
+        message = model.Message{} 
+        err := json.NewDecoder(c.Request.Body).Decode(&message) 
+        if err != nil { 
+            c.JSON(http.StatusOK, gin.H{ 
+                "success": false, 
+                "message": "无法解析请求体，请检查其是否为合法 JSON", 
+            }) 
+            return 
+        } 
+    } else { 
+        message = model.Message{ 
+            Title:       c.PostForm("title"),
+            Description: c.PostForm("description"),
+            Content:     c.PostForm("content"),
+            URL:         c.PostForm("url"),
+            Btntxt:      c.PostForm("btntxt"),
+            Channel:     c.PostForm("channel"),
+            Token:       c.PostForm("token"),
+            To:          c.PostForm("to"),
+            Desp:        c.PostForm("desp"),
+            Short:       c.PostForm("short"),
+            OpenId:      c.PostForm("openid"),
+            Async:       c.PostForm("async") == "true",
+            RenderMode:  c.PostForm("render_mode"),
+            Articles:    parseArticles(c.PostForm("articles")), 
+        } 
+    }
 	// 修改比较逻辑，检查关键字段是否为空
 	if message.Title == "" && message.Description == "" && message.Content == "" && message.Channel == "" && message.Token == "" {
 		c.JSON(http.StatusOK, gin.H{
@@ -217,9 +235,14 @@ func saveAndSendMessage(user *model.User, message *model.Message, channel_ *mode
 		}()
 		err := message.UpdateAndInsert(user.Id)
 		if err != nil {
-			return err
-		}
-		go syncMessageToUser(message, user.Id)
+			common.SysError("保存消息失败: " + err.Error()) // 添加错误日志 
+			return err 
+		} 
+		go func() { 
+			if err := syncMessageToUser(message, user.Id); err != nil { 
+				common.SysError("同步消息到用户失败: " + err.Error()) // 添加错误日志 
+			} 
+		}() 
 	} else {
 		if message.Async {
 			return errors.New("异步发送消息需要用户具备消息持久化的权限")
@@ -230,8 +253,9 @@ func saveAndSendMessage(user *model.User, message *model.Message, channel_ *mode
 	if !message.Async {
 		err := channel.SendMessage(message, user, channel_)
 		if err != nil {
-			return err
-		}
+			common.SysError("发送消息失败: " + err.Error()) // 添加错误日志 
+			return err 
+		} 
 	}
 	success = true
 	return nil // After this line, the message status will be updated
