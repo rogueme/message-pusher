@@ -241,9 +241,7 @@ func saveAndSendMessage(user *model.User, message *model.Message, channel_ *mode
         } 
         // 异步执行消息同步操作，并添加错误处理 
         go func() { 
-            if err := syncMessageToUser(message, user.Id); err != nil { 
-                common.SysError("同步消息到用户失败: " + err.Error()) 
-            } 
+            syncMessageToUser(message, user.Id)
         }() 
     } else { 
         if message.Async { 
@@ -252,9 +250,7 @@ func saveAndSendMessage(user *model.User, message *model.Message, channel_ *mode
         message.Link = "unsaved" // This is for user to identify whether the message is saved 
         // 修正：使用匿名函数包裹调用并添加错误处理 
         go func() { 
-            if err := syncMessageToUser(message, user.Id); err != nil { 
-                common.SysError("同步消息到用户失败: " + err.Error()) 
-            } 
+            syncMessageToUser(message, user.Id)
         }() 
     } 
     if !message.Async { 
